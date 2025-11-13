@@ -1,0 +1,421 @@
+/* Import Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+/* Mission Screen Styles */
+.mission-screen {
+  position: relative;
+  min-height: 100vh;
+  background: 
+    linear-gradient(135deg, rgba(10, 20, 40, 0.9) 0%, rgba(20, 30, 50, 0.8) 100%),
+    radial-gradient(ellipse at top, rgba(30, 60, 100, 0.3) 0%, transparent 70%),
+    #0a0e17;
+  padding: clamp(1rem, 2vw, 2rem);
+  overflow-x: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Corner Decorations (reused from TitleScreen) */
+.corner-decoration {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border: 2px solid rgba(100, 150, 200, 0.4);
+}
+
+.corner-decoration::before,
+.corner-decoration::after {
+  content: '';
+  position: absolute;
+  background: rgba(100, 150, 200, 0.6);
+}
+
+.top-left {
+  top: 30px;
+  left: 30px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.top-left::before {
+  width: 2px;
+  height: 20px;
+  top: -2px;
+  left: 10px;
+}
+
+.top-left::after {
+  width: 20px;
+  height: 2px;
+  top: 10px;
+  left: -2px;
+}
+
+.top-right {
+  top: 30px;
+  right: 30px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.top-right::before {
+  width: 2px;
+  height: 20px;
+  top: -2px;
+  right: 10px;
+}
+
+.top-right::after {
+  width: 20px;
+  height: 2px;
+  top: 10px;
+  right: -2px;
+}
+
+.bottom-left {
+  bottom: 30px;
+  left: 30px;
+  border-right: none;
+  border-top: none;
+}
+
+.bottom-left::before {
+  width: 2px;
+  height: 20px;
+  bottom: -2px;
+  left: 10px;
+}
+
+.bottom-left::after {
+  width: 20px;
+  height: 2px;
+  bottom: 10px;
+  left: -2px;
+}
+
+.bottom-right {
+  bottom: 30px;
+  right: 30px;
+  border-left: none;
+  border-top: none;
+}
+
+.bottom-right::before {
+  width: 2px;
+  height: 20px;
+  bottom: -2px;
+  right: 10px;
+}
+
+.bottom-right::after {
+  width: 20px;
+  height: 2px;
+  bottom: 10px;
+  right: -2px;
+}
+
+/* Mission Header */
+.mission-header {
+  text-align: center;
+  margin-bottom: clamp(1rem, 2vh, 2rem);
+}
+
+.mission-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  margin: 0 0 clamp(0.5rem, 1vh, 1rem) 0;
+  color: #a8c7e8;
+  text-shadow: 
+    0 0 20px rgba(127, 173, 219, 0.6),
+    0 0 40px rgba(127, 173, 219, 0.4);
+}
+
+.mission-status-bar {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.65rem, 1vw, 0.85rem);
+  letter-spacing: 0.2em;
+  color: rgba(168, 199, 232, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.5rem, 1vw, 1rem);
+  text-transform: uppercase;
+}
+
+.status-dot {
+  color: rgba(127, 173, 219, 0.5);
+}
+
+/* Info Container Styles */
+.info-container {
+  background: linear-gradient(135deg, rgba(40, 60, 90, 0.4) 0%, rgba(30, 50, 80, 0.3) 100%);
+  border: 1px solid rgba(100, 140, 180, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-container-header {
+  background: linear-gradient(135deg, rgba(80, 100, 140, 0.4) 0%, rgba(60, 80, 120, 0.3) 100%);
+  border-bottom: 1px solid rgba(100, 140, 180, 0.3);
+  padding: clamp(0.75rem, 1.5vh, 1rem) clamp(1rem, 2vw, 1.5rem);
+}
+
+.info-container-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.85rem, 1.2vw, 1rem);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin: 0;
+  color: #e8f0f8;
+  text-transform: uppercase;
+}
+
+.info-container-content {
+  padding: clamp(1rem, 2vh, 1.25rem) clamp(1rem, 2vw, 1.5rem);
+  flex: 1;
+  overflow-y: auto;
+  color: rgba(168, 199, 232, 0.9);
+  font-size: clamp(0.8rem, 1vw, 0.95rem);
+  line-height: 1.6;
+}
+
+/* Mission Grid Layout */
+.mission-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  gap: clamp(1rem, 1.5vw, 1.5rem);
+  margin-bottom: clamp(1rem, 2vh, 1.5rem);
+}
+
+.mission-column {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1rem, 1.5vh, 1.5rem);
+}
+
+/* Data List Styles */
+.data-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.5rem, 1vh, 0.75rem);
+}
+
+.data-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: clamp(0.4rem, 0.8vh, 0.6rem) 0;
+  border-bottom: 1px solid rgba(100, 140, 180, 0.15);
+}
+
+.data-item:last-child {
+  border-bottom: none;
+}
+
+.data-label {
+  color: rgba(168, 199, 232, 0.7);
+  font-size: clamp(0.75rem, 0.95vw, 0.9rem);
+}
+
+.data-value {
+  color: #a8c7e8;
+  font-weight: 600;
+  font-size: clamp(0.75rem, 0.95vw, 0.9rem);
+}
+
+/* Log List Styles */
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.4rem, 0.8vh, 0.5rem);
+  font-family: 'Courier New', monospace;
+}
+
+.log-entry {
+  color: rgba(168, 199, 232, 0.8);
+  font-size: clamp(0.7rem, 0.9vw, 0.85rem);
+  padding: clamp(0.25rem, 0.5vh, 0.4rem) 0;
+}
+
+/* Briefing Content */
+.briefing-content {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.75rem, 1.5vh, 1rem);
+}
+
+.briefing-content p {
+  margin: 0;
+  color: rgba(168, 199, 232, 0.85);
+  line-height: 1.7;
+  text-align: justify;
+}
+
+/* Objectives List */
+.objectives-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.5rem, 1vh, 0.75rem);
+}
+
+.objective-item {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(0.5rem, 1vw, 0.75rem);
+}
+
+.objective-bullet {
+  color: #60d0a0;
+  font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+  line-height: 1.5;
+}
+
+.objective-text {
+  color: rgba(168, 199, 232, 0.85);
+  font-size: clamp(0.75rem, 0.95vw, 0.9rem);
+  line-height: 1.5;
+}
+
+/* Intel Feed */
+.intel-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.75rem, 1.5vh, 1rem);
+}
+
+.intel-item {
+  padding: clamp(0.75rem, 1.5vh, 1rem);
+  border-radius: 8px;
+  border-left: 3px solid;
+}
+
+.intel-info {
+  background: rgba(80, 120, 160, 0.15);
+  border-left-color: #6090c0;
+}
+
+.intel-warning {
+  background: rgba(224, 160, 80, 0.15);
+  border-left-color: #e0a050;
+}
+
+.intel-alert {
+  background: rgba(192, 64, 80, 0.15);
+  border-left-color: #c04050;
+}
+
+.intel-title {
+  font-weight: 700;
+  color: #e8f0f8;
+  margin-bottom: clamp(0.25rem, 0.5vh, 0.4rem);
+  font-size: clamp(0.8rem, 1vw, 0.95rem);
+}
+
+.intel-description {
+  color: rgba(168, 199, 232, 0.75);
+  font-size: clamp(0.7rem, 0.9vw, 0.85rem);
+  line-height: 1.5;
+}
+
+/* Command Section */
+.command-section {
+  margin-top: clamp(1rem, 2vh, 1.5rem);
+}
+
+.command-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(0.75rem, 1.5vh, 1rem);
+}
+
+.command-option-btn {
+  flex: 1 1 auto;
+  min-width: clamp(200px, 30%, 300px);
+  padding: clamp(0.75rem, 1.5vh, 1rem) clamp(1rem, 2vw, 1.5rem);
+  background: linear-gradient(135deg, rgba(30, 50, 80, 0.6) 0%, rgba(20, 40, 70, 0.4) 100%);
+  border: 1px solid rgba(80, 120, 160, 0.3);
+  border-radius: 8px;
+  color: rgba(168, 199, 232, 0.9);
+  font-size: clamp(0.75rem, 0.95vw, 0.9rem);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.command-option-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(100, 150, 200, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.command-option-btn:hover {
+  background: linear-gradient(135deg, rgba(40, 70, 110, 0.7) 0%, rgba(30, 60, 100, 0.5) 100%);
+  border-color: rgba(100, 150, 200, 0.5);
+  transform: translateX(3px);
+  box-shadow: 0 4px 16px rgba(80, 130, 180, 0.2);
+}
+
+.command-option-btn:hover::before {
+  left: 100%;
+}
+
+.command-option-btn:active {
+  transform: translateX(1px);
+}
+
+/* Scrollbar Styling */
+.info-container-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.info-container-content::-webkit-scrollbar-track {
+  background: rgba(20, 30, 50, 0.3);
+  border-radius: 3px;
+}
+
+.info-container-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 140, 180, 0.4);
+  border-radius: 3px;
+}
+
+.info-container-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 140, 180, 0.6);
+}
+
+/* Responsive Design */
+@media (max-width: 1400px) {
+  .mission-grid {
+    grid-template-columns: 1fr 1.2fr 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .mission-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .mission-column {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .command-option-btn {
+    min-width: 100%;
+  }
+}
