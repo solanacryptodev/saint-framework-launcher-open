@@ -3,189 +3,95 @@
     windows_subsystem = "windows"
 )]
 
-// src/main.rs
-use tauri::{State, Builder, generate_handler, generate_context};
+use tauri::{State, Manager};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-use serde_json::json;
 
 mod graph_db;
-use graph_db::{GraphDB};
+mod graphs;
 
-#[derive(Default)]
-pub struct AppState {
-    pub db: Arc<Mutex<GraphDB>>,
+use graph_db::GraphDB;
+use graphs::world_graph::WorldGraph;
+use graphs::lore_graph::LoreGraph;
+
+
+#[derive(Clone)]
+struct AppState {
+    world_graph: Arc<Mutex<WorldGraph>>,    lore_graph: Arc<Mutex<LoreGraph>>,
 }
 
 #[tauri::command]
-async fn initialize_new_game(app_state: State<'_, AppState>) -> Result<String, String> {
-    let mut db = app_state.db.lock().map_err(|_| "Failed to lock database")?;
+async fn initialize_new_game(state: State<'_, AppState>) -> Result<String, String> {
+    // Reset world graph
+    let mut world_graph = state.world_graph.lock().map_err(|_| "Failed to lock world graph")?;
+    *world_graph = WorldGraph::new();
     
-    // Clear existing data
-    *db = GraphDB::new();
+    // Reset lore graph
+    let mut lore_graph = state.lore_graph.lock().map_err(|_| "Failed to lock lore graph")?;
+    *lore_graph = LoreGraph::new();
     
-    // Create some example nodes with metadata
-    let player_id = db.create_node(
-        "character".to_string(),
-        "Player".to_string(),
-        json!({
-            "role": "hero",
-            "power_level": 1,
-            "background": "ordinary person thrust into adventure"
-        })
-    );
-    
-    let tavern_id = db.create_node(
-        "location".to_string(),
-        "The Rusty Flask Tavern".to_string(),
-        json!({
-            "atmosphere": "warm",
-            "patrons": 12,
-            "has_secret_passage": true
-        })
-    );
-    
-    let npc_id = db.create_node(
-        "character".to_string(),
-        "Old Elara".to_string(),
-        json!({
-            "role": "mentor",
-            "age": 78,
-            "secrets": ["ancient prophecy", "lost treasure map"],
-            "mood": "mysterious"
-        })
-    );
-    
-    let sword_id = db.create_node(
-        "item".to_string(),
-        "Rusty Sword".to_string(),
-        json!({
-            "rarity": "common",
-            "condition": "poor",
-            "hidden_power": "awakening"
-        })
-    );
-    
-    // Create edges with metadata
-    db.create_edge(
-        player_id, 
-        tavern_id, 
-        "LOCATED_AT".to_string(),
-        json!({
-            "since": "just arrived",
-            "purpose": "seeking information"
-        })
-    );
-    
-    db.create_edge(
-        npc_id, 
-        tavern_id, 
-        "RESIDES_IN".to_string(),
-        json!({
-            "duration": "20 years",
-            "role": "bartender"
-        })
-    );
-    
-    db.create_edge(
-        player_id, 
-        npc_id, 
-        "KNOWS".to_string(),
-        json!({
-            "trust_level": 0.3,
-            "first_meeting": true,
-            "conversation_topics": ["local gossip", "ancient legends"]
-        })
-    );
-    
-    db.create_edge(
-        npc_id, 
-        sword_id, 
-        "OWNS".to_string(),
-        json!({
-            "willing_to_sell": false,
-            "emotional_attachment": "high",
-            "acquisition_story": "from fallen comrade"
-        })
-    );
-    
-    // Return both player_id and tavern_id (and other important IDs) for the frontend
-    Ok(serde_json::json!({
-        "playerId": player_id.to_string(),
-        "tavernId": tavern_id.to_string(),
-        "npcId": npc_id.to_string(),
-        "swordId": sword_id.to_string()
-    }).to_string())
+    Ok("New game initialized successfully with demo graph data!".to_string())
 }
 
 #[tauri::command]
-async fn get_node(app_state: State<'_, AppState>, node_id: String) -> Result<serde_json::Value, String> {
-    let db = app_state.db.lock().map_err(|_| "Failed to lock database")?;
+async fn get_world_snapshot(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let world_graph = state.world_graph.lock().map_err(|_| "Failed to lock world graph")?;
     
-    let uuid = Uuid::parse_str(&node_id).map_err(|_| "Invalid node ID format")?;
+    // Get world snapshot
+    let snapshot = world_graph.get_world_snapshot();
     
-    if let Some(node) = db.nodes.get(&uuid) {
-        Ok(serde_json::json!({
-            "id": node.id.to_string(),
-            "type": node.node_type,
-            "name": node.name,
-            "metadata": node.metadata
-        }))
+    Ok(snapshot)
+}
+
+#[tauri::command]
+async fn move_player(state: State<'_, AppState>, target_location_id: String) -> Result<serde_json::Value, String> {
+    let mut world_graph = state.world_graph.lock().map_err(|_| "Failed to lock world graph")?;
+    
+    // Parse location ID
+    let location_uuid = Uuid::parse_str(&target_location_id).map_err(|_| "Invalid location ID format")?;
+    
+    // Move player
+    if world_graph.move_player_to(location_uuid) {
+        // Return updated snapshot
+        Ok(world_graph.get_world_snapshot())
     } else {
-        Err("Node not found".to_string())
+        Err("Failed to move player to location".to_string())
     }
 }
 
 #[tauri::command]
-async fn get_edges_for_node(app_state: State<'_, AppState>, node_id: String) -> Result<serde_json::Value, String> {
-    let db = app_state.db.lock().map_err(|_| "Failed to lock database")?;
+async fn get_lore_context(state: State<'_, AppState>, location_id: String, player_state: serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    let lore_graph = state.lore_graph.lock().map_err(|_| "Failed to lock lore graph")?;
     
-    let uuid = Uuid::parse_str(&node_id).map_err(|_| "Invalid node ID format")?;
+    // Get relevant lore
+    let lore_context = lore_graph.get_relevant_lore(&location_id, player_state);
     
-    let mut edges_result = Vec::new();
-    
-    // Get outgoing edges
-    if let Some(edge_ids) = db.edges_by_source.get(&uuid) {
-        for edge_id in edge_ids {
-            if let Some(edge) = db.edges.get(edge_id) {
-                edges_result.push(serde_json::json!({
-                    "id": edge.id.to_string(),
-                    "source": edge.source.to_string(),
-                    "target": edge.target.to_string(),
-                    "type": edge.edge_type,
-                    "metadata": edge.metadata
-                }));
-            }
-        }
-    }
-    
-    // Get incoming edges
-    if let Some(edge_ids) = db.edges_by_target.get(&uuid) {
-        for edge_id in edge_ids {
-            if let Some(edge) = db.edges.get(edge_id) {
-                edges_result.push(serde_json::json!({
-                    "id": edge.id.to_string(),
-                    "source": edge.source.to_string(),
-                    "target": edge.target.to_string(),
-                    "type": edge.edge_type,
-                    "metadata": edge.metadata
-                }));
-            }
-        }
-    }
-    
-    Ok(serde_json::json!(edges_result))
+    Ok(lore_context)
 }
 
-// src/main.rs (continued)
 fn main() {
-    Builder::default()
-        .manage(AppState::default())
-        .invoke_handler(generate_handler![
+    tauri::Builder::default()
+        .setup(|app| {
+            // Initialize graphs
+            let world_graph = Arc::new(Mutex::new(WorldGraph::new()));
+            let lore_graph = Arc::new(Mutex::new(LoreGraph::new()));
+            
+            // Create app state
+            let app_state = AppState {
+                world_graph,
+                lore_graph,
+            };
+            
+            // Manage state
+            app.manage(app_state);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
             initialize_new_game,
-            get_node,
-            get_edges_for_node
+            get_world_snapshot,
+            move_player,
+            get_lore_context
         ])
-        .run(generate_context!())
+        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
