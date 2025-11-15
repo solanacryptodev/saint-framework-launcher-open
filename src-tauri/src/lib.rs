@@ -1,4 +1,4 @@
-#![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
-    windows_subsystem = "windows"
-)]
+#![allow(dead_code)]
+
+pub mod shared_types;
+pub mod workflows;
