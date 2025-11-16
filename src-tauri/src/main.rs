@@ -148,8 +148,8 @@ async fn initialize_narrative_system(state: State<'_, AppState>) -> Result<Strin
     println!("📡 Tauri Command: initialize_narrative_system called");
     
     // Load the ONNX model
-    println!("📦 Loading ONNX model from models/qwen3-0.6B/...");
-    let model = OrtModel::from_dir("models/qwen3-0.6B")
+    println!("📦 Loading ONNX model from models/gemma-270M/...");
+    let model = OrtModel::from_dir("models/gemma-270M")
         .map_err(|e| {
             let err_msg = format!("Failed to load model: {}", e);
             eprintln!("❌ {}", err_msg);

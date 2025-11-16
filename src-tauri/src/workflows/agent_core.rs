@@ -63,6 +63,24 @@ pub struct OrtModel {
 }
 
 impl OrtModel {
+    /// Returns a reference to the internal `CacheManager` for testing.
+    #[cfg(test)]
+    pub fn get_cache_manager(&self) -> Arc<Mutex<CacheManager>> {
+        Arc::clone(&self.cache_manager)
+    }
+
+    /// Returns a reference to the model config for testing.
+    #[cfg(test)]
+    pub fn get_config(&self) -> &ModelConfig {
+        &self.config
+    }
+
+    /// Returns a reference to the tokenizer for testing.
+    #[cfg(test)]
+    pub fn get_tokenizer(&self) -> Arc<RealTokenizer> {
+        Arc::clone(&self.tokenizer)
+    }
+
     pub fn new(model_path: &str, tokenizer: Arc<RealTokenizer>, config: ModelConfig) -> Result<Self> {
         // For ort 2.0.0-rc.10
         let session = Session::builder()?
@@ -166,13 +184,14 @@ impl OrtModel {
             inputs.push((pos_name.clone(), position_ids_value));
         }
         
-        // Add past KV caches if provided
-        if let Some(caches) = past_kv_cache {
-            for layer_idx in 0..self.config.num_layers {
+        // Always add past KV caches - either from cache or empty placeholders
+        for layer_idx in 0..self.config.num_layers {
+            let key_name = self.config.input_name_for_past_kv(layer_idx, true);
+            let value_name = self.config.input_name_for_past_kv(layer_idx, false);
+            
+            if let Some(ref caches) = past_kv_cache {
+                // Cached pass: use existing cache
                 if let Some((key, value)) = caches[layer_idx] {
-                    let key_name = self.config.input_name_for_past_kv(layer_idx, true);
-                    let value_name = self.config.input_name_for_past_kv(layer_idx, false);
-                    
                     // Extract f32 tensors and recreate as owned Values
                     let (key_shape, key_data) = key.try_extract_tensor::<f32>()?;
                     let (value_shape, value_data) = value.try_extract_tensor::<f32>()?;
@@ -183,6 +202,17 @@ impl OrtModel {
                     inputs.push((key_name, key_owned));
                     inputs.push((value_name, value_owned));
                 }
+            } else {
+                // First pass: provide empty cache tensors [1, num_heads, 1, head_dim] with zeros
+                let empty_shape = vec![1i64, self.config.num_attention_heads as i64, 1i64, self.config.head_dim as i64];
+                let total_elements = (self.config.num_attention_heads * self.config.head_dim) as usize;
+                let empty_data: Vec<f32> = vec![0.0; total_elements];
+                
+                let empty_key = Value::from_array((empty_shape.clone(), empty_data.clone()))?.into_dyn();
+                let empty_value = Value::from_array((empty_shape, empty_data))?.into_dyn();
+                
+                inputs.push((key_name, empty_key));
+                inputs.push((value_name, empty_value));
             }
         }
         

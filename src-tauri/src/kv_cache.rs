@@ -64,8 +64,9 @@ impl LayerCache {
 
     /// Updates the cache with new key and value tensors
     /// 
-    /// For the initial implementation, this simply stores the most recent key/value pair.
-    /// Future enhancements will support concatenation along the sequence dimension.
+    /// When using KV cache with a model, the "present" KV outputs contain the FULL sequence
+    /// (past + new tokens), so we replace the cache rather than concatenate.
+    /// Only on the very first pass (empty cache) do we store the tensors as-is.
     /// 
     /// # Arguments
     /// 
@@ -84,20 +85,20 @@ impl LayerCache {
     pub fn update(&mut self, key_input: Value, value_input: Value) -> Result<()> {
         // Get the shape to determine sequence length
         let key_shape = key_input.shape();
-        if key_shape.len() < 3 {
+        if key_shape.len() != 4 {
             return Err(LlmError::InvalidInput {
-                reason: format!("Key input must have at least 3 dimensions, got {}", key_shape.len()),
+                reason: format!("Key input must have 4 dimensions, got {}", key_shape.len()),
             });
         }
         
         let value_shape = value_input.shape();
-        if value_shape.len() < 3 {
+        if value_shape.len() != 4 {
             return Err(LlmError::InvalidInput {
-                reason: format!("Value input must have at least 3 dimensions, got {}", value_shape.len()),
+                reason: format!("Value input must have 4 dimensions, got {}", value_shape.len()),
             });
         }
         
-        let seq_len = key_shape[2] as usize;
+        let new_seq_len = key_shape[2] as usize;
         
         // Validate shapes match expected dimensions
         if key_shape != value_shape {
@@ -108,18 +109,177 @@ impl LayerCache {
             ));
         }
         
-        // Store the input Values (take ownership)
+        // When using KV cache, the model's "present" outputs contain the FULL sequence
+        // (past + new tokens), so we replace the cache rather than concatenate
         self.key_cache = Some(key_input);
         self.value_cache = Some(value_input);
-        self.current_length = seq_len;
+        self.current_length = new_seq_len;
         
         Ok(())
+    }
+    
+    /// Helper function to concatenate two f32 tensors along a specified dimension
+    /// 
+    /// # Arguments
+    /// 
+    /// * `tensor1` - First tensor
+    /// * `tensor2` - Second tensor
+    /// * `dim` - Dimension along which to concatenate
+    /// 
+    /// # Returns
+    /// 
+    /// `Result<Value>` - Concatenated tensor or error
+    fn concatenate_tensors_f32(tensor1: Value, tensor2: Value, dim: usize) -> Result<Value> {
+        // Extract data from both tensors
+        let shape1 = tensor1.shape();
+        let shape2 = tensor2.shape();
+        
+        // Validate shapes are compatible
+        if shape1.len() != shape2.len() {
+            return Err(LlmError::InvalidInput {
+                reason: format!("Tensor ranks don't match: {} vs {}", shape1.len(), shape2.len()),
+            });
+        }
+        
+        if dim >= shape1.len() {
+            return Err(LlmError::InvalidInput {
+                reason: format!("Concat dimension {} out of bounds for rank {}", dim, shape1.len()),
+            });
+        }
+        
+        // Validate all dimensions except `dim` match
+        for i in 0..shape1.len() {
+            if i != dim && shape1[i] != shape2[i] {
+                return Err(LlmError::InvalidInput {
+                    reason: format!("Shape mismatch at dimension {}: {} vs {}", i, shape1[i], shape2[i]),
+                });
+            }
+        }
+        
+        // Extract raw data as f32 slices
+        let data1 = tensor1.try_extract_tensor::<f32>()
+            .map_err(|e| LlmError::InvalidInput { 
+                reason: format!("Failed to extract tensor1 data: {}", e) 
+            })?;
+        let data2 = tensor2.try_extract_tensor::<f32>()
+            .map_err(|e| LlmError::InvalidInput { 
+                reason: format!("Failed to extract tensor2 data: {}", e) 
+            })?;
+        
+        // Calculate new shape
+        let mut new_shape = shape1.to_vec();
+        new_shape[dim] = shape1[dim] + shape2[dim];
+        
+        // Calculate strides for concatenation
+        let mut strides = vec![1usize; shape1.len()];
+        for i in (0..shape1.len() - 1).rev() {
+            strides[i] = strides[i + 1] * new_shape[i + 1] as usize;
+        }
+        
+        // Allocate output buffer
+        let total_elements: usize = new_shape.iter().map(|&d| d as usize).product();
+        let mut output = vec![0.0f32; total_elements];
+        
+        // Copy data from both tensors
+        Self::copy_slice_into_concat(data1.1, &mut output, &shape1, &new_shape, dim, 0, &strides);
+        Self::copy_slice_into_concat(data2.1, &mut output, &shape2, &new_shape, dim, shape1[dim] as usize, &strides);
+        
+        // Create new Value from concatenated data
+        let new_value = Value::from_array((new_shape, output))
+            .map_err(|e| LlmError::InvalidInput {
+                reason: format!("Failed to create Value from concatenated data: {}", e),
+            })?;
+        
+        Ok(new_value.into())
+    }
+    
+    /// Helper to copy a slice into the concatenated output buffer
+    fn copy_slice_into_concat(
+        src: &[f32],
+        dst: &mut [f32],
+        src_shape: &[i64],
+        _dst_shape: &[i64],
+        concat_dim: usize,
+        offset_in_concat_dim: usize,
+        strides: &[usize],
+    ) {
+        // Recursively iterate over all indices and copy elements
+        let mut src_idx = 0;
+        Self::copy_recursive(
+            src,
+            dst,
+            &src_shape.iter().map(|&d| d as usize).collect::<Vec<_>>(),
+            &_dst_shape.iter().map(|&d| d as usize).collect::<Vec<_>>(),
+            &mut vec![0; src_shape.len()],
+            concat_dim,
+            offset_in_concat_dim,
+            strides,
+            &mut src_idx,
+            0, // Start at dimension 0
+        );
+    }
+    
+    /// Recursive helper to copy multi-dimensional data
+    fn copy_recursive(
+        src: &[f32],
+        dst: &mut [f32],
+        src_shape: &[usize],
+        _dst_shape: &[usize],
+        indices: &mut [usize],
+        concat_dim: usize,
+        offset_in_concat_dim: usize,
+        strides: &[usize],
+        src_idx: &mut usize,
+        current_dim: usize,
+    ) {
+        if current_dim >= src_shape.len() {
+            return;
+        }
+        
+        if current_dim == src_shape.len() - 1 {
+            // Base case: copy the innermost dimension
+            for i in 0..src_shape[current_dim] {
+                indices[current_dim] = i;
+                
+                // Calculate destination index
+                let mut dst_idx = 0;
+                for (dim, &idx) in indices.iter().enumerate() {
+                    let adjusted_idx = if dim == concat_dim {
+                        idx + offset_in_concat_dim
+                    } else {
+                        idx
+                    };
+                    dst_idx += adjusted_idx * strides[dim];
+                }
+                
+                dst[dst_idx] = src[*src_idx];
+                *src_idx += 1;
+            }
+            indices[current_dim] = 0;
+        } else {
+            // Recursive case
+            for i in 0..src_shape[current_dim] {
+                indices[current_dim] = i;
+                Self::copy_recursive(
+                    src,
+                    dst,
+                    src_shape,
+                    _dst_shape,
+                    indices,
+                    concat_dim,
+                    offset_in_concat_dim,
+                    strides,
+                    src_idx,
+                    current_dim + 1,
+                );
+            }
+            indices[current_dim] = 0;
+        }
     }
 
     /// Trims the cache to the maximum window size using sliding window eviction
     /// 
-    /// Note: For the initial implementation, trimming is a placeholder.
-    /// Future implementations will slice tensors to keep only recent tokens.
+    /// Slices the cached tensors to keep only the most recent `max_length` tokens.
     /// 
     /// # Returns
     /// 
@@ -136,12 +296,196 @@ impl LayerCache {
             return Ok(());
         }
         
-        // TODO: Implement actual trimming by slicing the tensors
-        // For now, we just mark that trimming would occur
-        println!("⚠️  Cache length ({}) exceeds max ({}), trimming would occur here", 
-                 self.current_length, self.max_length);
+        // Calculate the start index for slicing (keep the last max_length tokens)
+        let start_index = self.current_length - self.max_length;
+        
+        // Take ownership of the cached tensors
+        let key_cache = self.key_cache.take().ok_or_else(|| LlmError::InvalidInput {
+            reason: "Key cache is missing despite non-zero current_length".to_string(),
+        })?;
+        let value_cache = self.value_cache.take().ok_or_else(|| LlmError::InvalidInput {
+            reason: "Value cache is missing despite non-zero current_length".to_string(),
+        })?;
+        
+        // Slice the tensors to keep only the last max_length tokens
+        let trimmed_key = Self::slice_tensor_f32(key_cache, 2, start_index, self.max_length)?;
+        let trimmed_value = Self::slice_tensor_f32(value_cache, 2, start_index, self.max_length)?;
+        
+        // Update cache with trimmed tensors
+        self.key_cache = Some(trimmed_key);
+        self.value_cache = Some(trimmed_value);
+        self.current_length = self.max_length;
         
         Ok(())
+    }
+    
+    /// Helper function to slice an f32 tensor along a specified dimension
+    /// 
+    /// # Arguments
+    /// 
+    /// * `tensor` - The tensor to slice
+    /// * `dim` - The dimension along which to slice
+    /// * `start` - The start index for the slice
+    /// * `length` - The length of the slice
+    /// 
+    /// # Returns
+    /// 
+    /// `Result<Value>` - Sliced tensor or error
+    fn slice_tensor_f32(tensor: Value, dim: usize, start: usize, length: usize) -> Result<Value> {
+        let shape = tensor.shape();
+        
+        if dim >= shape.len() {
+            return Err(LlmError::InvalidInput {
+                reason: format!("Slice dimension {} out of bounds for rank {}", dim, shape.len()),
+            });
+        }
+        
+        if start + length > shape[dim] as usize {
+            return Err(LlmError::InvalidInput {
+                reason: format!("Slice range [{}..{}] exceeds dimension size {}", 
+                    start, start + length, shape[dim]),
+            });
+        }
+        
+        // Extract raw data as f32 slice
+        let data = tensor.try_extract_tensor::<f32>()
+            .map_err(|e| LlmError::InvalidInput { 
+                reason: format!("Failed to extract tensor data: {}", e) 
+            })?;
+        
+        // Calculate new shape
+        let mut new_shape = shape.to_vec();
+        new_shape[dim] = length as i64;
+        
+        // Allocate output buffer
+        let total_elements: usize = new_shape.iter().map(|&d| d as usize).product();
+        let mut output = vec![0.0f32; total_elements];
+        
+        // Copy sliced data
+        Self::copy_slice_from_tensor(
+            data.1,
+            &mut output,
+            &shape.iter().map(|&d| d as usize).collect::<Vec<_>>(),
+            &new_shape.iter().map(|&d| d as usize).collect::<Vec<_>>(),
+            dim,
+            start,
+        );
+        
+        // Create new Value from sliced data
+        let new_value = Value::from_array((new_shape, output))
+            .map_err(|e| LlmError::InvalidInput {
+                reason: format!("Failed to create Value from sliced data: {}", e),
+            })?;
+        
+        Ok(new_value.into())
+    }
+    
+    /// Helper to copy a slice from a tensor into an output buffer
+    fn copy_slice_from_tensor(
+        src: &[f32],
+        dst: &mut [f32],
+        src_shape: &[usize],
+        dst_shape: &[usize],
+        slice_dim: usize,
+        start_offset: usize,
+    ) {
+        // Calculate strides for source
+        let mut src_strides = vec![1usize; src_shape.len()];
+        for i in (0..src_shape.len() - 1).rev() {
+            src_strides[i] = src_strides[i + 1] * src_shape[i + 1];
+        }
+        
+        // Calculate strides for destination
+        let mut dst_strides = vec![1usize; dst_shape.len()];
+        for i in (0..dst_shape.len() - 1).rev() {
+            dst_strides[i] = dst_strides[i + 1] * dst_shape[i + 1];
+        }
+        
+        // Recursively copy the slice
+        Self::copy_slice_recursive(
+            src,
+            dst,
+            src_shape,
+            dst_shape,
+            &mut vec![0; src_shape.len()],
+            slice_dim,
+            start_offset,
+            &src_strides,
+            &dst_strides,
+            0,
+        );
+    }
+    
+    /// Recursive helper to copy sliced multi-dimensional data
+    fn copy_slice_recursive(
+        src: &[f32],
+        dst: &mut [f32],
+        src_shape: &[usize],
+        dst_shape: &[usize],
+        indices: &mut [usize],
+        slice_dim: usize,
+        start_offset: usize,
+        src_strides: &[usize],
+        dst_strides: &[usize],
+        current_dim: usize,
+    ) {
+        if current_dim >= src_shape.len() {
+            return;
+        }
+        
+        if current_dim == src_shape.len() - 1 {
+            // Base case: copy the innermost dimension
+            for i in 0..dst_shape[current_dim] {
+                indices[current_dim] = if current_dim == slice_dim {
+                    i + start_offset
+                } else {
+                    i
+                };
+                
+                // Calculate source index
+                let mut src_idx = 0;
+                for (dim, &idx) in indices.iter().enumerate() {
+                    src_idx += idx * src_strides[dim];
+                }
+                
+                // Calculate destination index
+                let mut dst_idx = 0;
+                for (dim, &idx) in indices.iter().enumerate() {
+                    let adjusted_idx = if dim == slice_dim {
+                        idx - start_offset
+                    } else {
+                        idx
+                    };
+                    dst_idx += adjusted_idx * dst_strides[dim];
+                }
+                
+                dst[dst_idx] = src[src_idx];
+            }
+            indices[current_dim] = 0;
+        } else {
+            // Recursive case
+            let loop_count = dst_shape[current_dim];
+            for i in 0..loop_count {
+                indices[current_dim] = if current_dim == slice_dim {
+                    i + start_offset
+                } else {
+                    i
+                };
+                Self::copy_slice_recursive(
+                    src,
+                    dst,
+                    src_shape,
+                    dst_shape,
+                    indices,
+                    slice_dim,
+                    start_offset,
+                    src_strides,
+                    dst_strides,
+                    current_dim + 1,
+                );
+            }
+            indices[current_dim] = 0;
+        }
     }
 
     /// Retrieves references to the cached key and value tensors
@@ -498,19 +842,60 @@ mod tests {
         cache.update(key1.into(), value1.into()).unwrap();
         assert_eq!(cache.len(), 5);
         
-        // Second update: 3 more tokens (for now, this replaces rather than concatenates)
+        // Second update: 3 more tokens (concatenates with existing)
         let key2_data: Vec<f32> = vec![3.0; 1 * 1 * 3 * 256];
         let value2_data: Vec<f32> = vec![4.0; 1 * 1 * 3 * 256];
         let key2 = Value::from_array((vec![1, 1, 3, 256], key2_data)).unwrap();
         let value2 = Value::from_array((vec![1, 1, 3, 256], value2_data)).unwrap();
         cache.update(key2.into(), value2.into()).unwrap();
         
-        // Current implementation replaces, so length is 3
-        assert_eq!(cache.len(), 3);
+        // New implementation concatenates, so length is 5 + 3 = 8
+        assert_eq!(cache.len(), 8);
         
         let (cached_key, _cached_value) = cache.get_cache().unwrap();
         let shape = cached_key.shape();
-        assert_eq!(shape[2], 3); // sequence dimension should be 3
+        assert_eq!(shape[2], 8); // sequence dimension should be 8
+    }
+
+    #[test]
+    fn test_layer_cache_concatenation() {
+        let mut cache = LayerCache::new(0, 2048, 1, 256);
+        
+        // First update: 10 tokens
+        let key1_data: Vec<f32> = vec![1.0; 1 * 1 * 10 * 256];
+        let value1_data: Vec<f32> = vec![2.0; 1 * 1 * 10 * 256];
+        let key1 = Value::from_array((vec![1, 1, 10, 256], key1_data)).unwrap();
+        let value1 = Value::from_array((vec![1, 1, 10, 256], value1_data)).unwrap();
+        cache.update(key1.into(), value1.into()).unwrap();
+        assert_eq!(cache.len(), 10);
+        
+        // Second update: 5 more tokens
+        let key2_data: Vec<f32> = vec![3.0; 1 * 1 * 5 * 256];
+        let value2_data: Vec<f32> = vec![4.0; 1 * 1 * 5 * 256];
+        let key2 = Value::from_array((vec![1, 1, 5, 256], key2_data)).unwrap();
+        let value2 = Value::from_array((vec![1, 1, 5, 256], value2_data)).unwrap();
+        cache.update(key2.into(), value2.into()).unwrap();
+        
+        // Verify current_length == 15
+        assert_eq!(cache.current_length, 15);
+        assert_eq!(cache.len(), 15);
+        
+        // Verify cache shape is [1, num_heads, 15, head_dim]
+        let (cached_key, cached_value) = cache.get_cache().unwrap();
+        let key_shape = cached_key.shape();
+        let value_shape = cached_value.shape();
+        
+        assert_eq!(key_shape.len(), 4);
+        assert_eq!(key_shape[0], 1); // batch
+        assert_eq!(key_shape[1], 1); // num_heads
+        assert_eq!(key_shape[2], 15); // sequence length
+        assert_eq!(key_shape[3], 256); // head_dim
+        
+        assert_eq!(value_shape.len(), 4);
+        assert_eq!(value_shape[0], 1); // batch
+        assert_eq!(value_shape[1], 1); // num_heads
+        assert_eq!(value_shape[2], 15); // sequence length
+        assert_eq!(value_shape[3], 256); // head_dim
     }
 
     #[test]
@@ -525,11 +910,16 @@ mod tests {
         cache.update(key.into(), value.into()).unwrap();
         assert_eq!(cache.len(), 15);
         
-        // Trim to window (currently a no-op but doesn't error)
+        // Trim to window
         cache.trim_to_window().unwrap();
         
-        // Length stays 15 in current implementation (trimming not implemented yet)
-        assert_eq!(cache.len(), 15);
+        // Length should now be trimmed to max_length (10)
+        assert_eq!(cache.len(), 10);
+        
+        // Verify shape is correct
+        let (cached_key, _) = cache.get_cache().unwrap();
+        let shape = cached_key.shape();
+        assert_eq!(shape[2], 10); // sequence dimension should be 10
     }
 
     #[test]
@@ -715,7 +1105,7 @@ mod tests {
         
         // Total should be 5 + 3 = 8
         assert_eq!(manager.total_tokens_processed(), 8);
-        // Current length is 3 (because update replaces)
-        assert_eq!(manager.current_length(), 3);
+        // Current length is 8 (because update concatenates)
+        assert_eq!(manager.current_length(), 8);
     }
 }
