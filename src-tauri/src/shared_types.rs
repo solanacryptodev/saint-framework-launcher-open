@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use anyhow::Result;
+use crate::error::{Result, LlmError};
 
 // ============================================================================
 // TOOL SYSTEM - Define tools that agents can use
@@ -209,7 +209,9 @@ impl Blackboard {
                 Ok(false) // Slot not ready for writing yet
             }
         } else {
-            Err(anyhow::anyhow!("Slot {} does not exist", slot_number))
+            Err(LlmError::InvalidInput {
+                reason: format!("Slot {} does not exist", slot_number),
+            })
         }
     }
 
@@ -220,7 +222,9 @@ impl Blackboard {
         if let Some(slot) = slots.get_mut(&slot_number) {
             Ok(slot.read())
         } else {
-            Err(anyhow::anyhow!("Slot {} does not exist", slot_number))
+            Err(LlmError::InvalidInput {
+                reason: format!("Slot {} does not exist", slot_number),
+            })
         }
     }
 
@@ -235,7 +239,9 @@ impl Blackboard {
                 has_data: slot.data.is_some(),
             })
         } else {
-            Err(anyhow::anyhow!("Slot {} does not exist", slot_number))
+            Err(LlmError::InvalidInput {
+                reason: format!("Slot {} does not exist", slot_number),
+            })
         }
     }
 
