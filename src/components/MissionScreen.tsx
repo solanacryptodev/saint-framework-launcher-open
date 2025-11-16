@@ -1,8 +1,97 @@
-import { For } from "solid-js";
+import { For, createSignal, onMount, createEffect } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import InfoContainer from "./SciFiContainers/InfoContainer";
 import "./MissionScreen.css";
 
+interface NarrativeState {
+  mission_briefing: string;
+  command_options: string[];
+}
+
 export default function MissionScreen() {
+  const [missionBriefing, setMissionBriefing] = createSignal("");
+  const [displayedBriefing, setDisplayedBriefing] = createSignal("");
+  const [commandOptions, setCommandOptions] = createSignal<string[]>([]);
+  const [isLoading, setIsLoading] = createSignal(false);
+  const [isInitialized, setIsInitialized] = createSignal(false);
+
+  // Typewriter effect for mission briefing
+  createEffect(() => {
+    const fullText = missionBriefing();
+    let currentIndex = 0;
+    setDisplayedBriefing("");
+
+    const intervalId = setInterval(() => {
+      if (currentIndex < fullText.length) {
+        setDisplayedBriefing(fullText.slice(0, currentIndex + 1));
+        currentIndex++;
+      } else {
+        clearInterval(intervalId);
+      }
+    }, 20); // Adjust speed here (ms per character)
+
+    return () => clearInterval(intervalId);
+  });
+
+  // Initialize narrative system and generate initial mission
+  onMount(async () => {
+    try {
+      setIsLoading(true);
+      
+      // Initialize the narrative system (loads the AI model)
+      await invoke("initialize_narrative_system");
+      setIsInitialized(true);
+      
+      // Generate initial mission briefing and options
+      const initialState = await invoke<NarrativeState>("generate_initial_mission");
+      setMissionBriefing(initialState.mission_briefing);
+      setCommandOptions(initialState.command_options);
+    } catch (error) {
+      console.error("Failed to initialize narrative system:", error);
+      // Fallback to static content
+      setMissionBriefing(
+        "The deep space scanner has detected an anomalous energy signature emanating " +
+        "from the abandoned research station Omega-7. Long-range sensors indicate the " +
+        "station's power core is still active despite being offline for over a decade.\n\n" +
+        "Your mission is to investigate the station and determine the source of the energy " +
+        "readings. Be advised: the last transmission from Omega-7 mentioned " +
+        "\"unprecedented discoveries\" before all communication ceased.\n\n" +
+        "As you approach the station, your tactical officer reports multiple hull breaches " +
+        "and signs of a struggle. The docking bay appears intact, but life support readings " +
+        "are inconclusive."
+      );
+      setCommandOptions([
+        "Dock immediately and begin investigation",
+        "Perform detailed scans before approaching",
+        "Hail the station on all frequencies",
+        "Deploy reconnaissance drones first",
+        "Request backup from Command"
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  });
+
+  // Handle command option selection
+  const handleCommandOption = async (option: string) => {
+    if (isLoading() || !isInitialized()) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // Process the selected command option
+      const newState = await invoke<NarrativeState>("process_command_option", {
+        selectedOption: option
+      });
+      
+      setMissionBriefing(newState.mission_briefing);
+      setCommandOptions(newState.command_options);
+    } catch (error) {
+      console.error("Failed to process command option:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const tacticalStatus = [
     { label: "Hull Integrity:", value: "94%" },
     { label: "Shield Power:", value: "87%" },
@@ -55,14 +144,6 @@ export default function MissionScreen() {
       description: "Unknown life forms detected in lower decks",
       type: "alert"
     }
-  ];
-
-  const commandOptions = [
-    "Dock immediately and begin investigation",
-    "Perform detailed scans before approaching",
-    "Hail the station on all frequencies",
-    "Deploy reconnaissance drones first",
-    "Request backup from Command"
   ];
 
   return (
@@ -130,21 +211,11 @@ export default function MissionScreen() {
         <div class="mission-column center-column">
           <InfoContainer title="MISSION BRIEFING" class="mission-briefing">
             <div class="briefing-content">
-              <p>
-                The deep space scanner has detected an anomalous energy signature emanating 
-                from the abandoned research station Omega-7. Long-range sensors indicate the 
-                station's power core is still active despite being offline for over a decade.
-              </p>
-              <p>
-                Your mission is to investigate the station and determine the source of the energy 
-                readings. Be advised: the last transmission from Omega-7 mentioned 
-                "unprecedented discoveries" before all communication ceased.
-              </p>
-              <p>
-                As you approach the station, your tactical officer reports multiple hull breaches 
-                and signs of a struggle. The docking bay appears intact, but life support readings 
-                are inconclusive.
-              </p>
+              {isLoading() ? (
+                <p style="text-align: center; opacity: 0.7">Loading...</p>
+              ) : (
+                <p style="white-space: pre-wrap">{displayedBriefing()}</p>
+              )}
             </div>
           </InfoContainer>
         </div>
@@ -196,9 +267,15 @@ export default function MissionScreen() {
       <div class="command-section">
         <InfoContainer title="COMMAND OPTIONS:">
           <div class="command-options">
-            <For each={commandOptions}>
+            <For each={commandOptions()}>
               {(option) => (
-                <button class="command-option-btn">{option}</button>
+                <button 
+                  class="command-option-btn"
+                  onClick={() => handleCommandOption(option)}
+                  disabled={isLoading()}
+                >
+                  {option}
+                </button>
               )}
             </For>
           </div>

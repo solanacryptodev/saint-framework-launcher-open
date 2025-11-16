@@ -1,9 +1,10 @@
 [package]
 name = "saint-framework-launcher-open"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A launcher for a text-based game client"
+authors = ["Brian Lewis"]
 edition = "2021"
+default-run = "saint-framework-launcher-open"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,6 +14,14 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "saint_framework_launcher_open_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "saint-framework-launcher-open"
+path = "src/main.rs"
+
+[[bin]]
+name = "inspect_model"
+path = "src/bin/inspect_model.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -26,7 +35,10 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 thiserror = "1.0"
 tokio = { version = "1", features = ["sync", "macros", "rt-multi-thread"] }
 once_cell = "1.18"
-ort = "1.16.3"
+ort = { version = "2.0.0-rc.10", features = ["load-dynamic"] }
 tokenizers = "0.22.1"
 ndarray = "0.15.6"
 anyhow = "1.0.100"
+parking_lot = "0.12"
+tracing = "0.1"
+half = "2.4"

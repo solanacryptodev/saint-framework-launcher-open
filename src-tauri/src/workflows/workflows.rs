@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use anyhow::Result;
+use crate::error::{Result, LlmError};
 
 // Assuming we have the Agent struct from previous artifact
 use super::agent_core::Agent;
@@ -166,7 +166,9 @@ impl RoutingWorkflow {
             println!("📍 Routing to: {}", specialist_name);
             specialist.run(input).await
         } else {
-            Err(anyhow::anyhow!("Unknown specialist: {}", specialist_name))
+            Err(LlmError::InvalidInput {
+                reason: format!("Unknown specialist: {}", specialist_name),
+            })
         }
     }
     
@@ -175,7 +177,9 @@ impl RoutingWorkflow {
         if let Some(name) = response.split(':').nth(1) {
             Ok(name.trim().to_string())
         } else {
-            Err(anyhow::anyhow!("Could not parse routing decision"))
+            Err(LlmError::InvalidInput {
+                reason: "Could not parse routing decision".to_string(),
+            })
         }
     }
 }
@@ -261,13 +265,17 @@ impl ConsensusWorkflow {
                     .into_iter()
                     .max_by_key(|(_, count)| *count)
                     .map(|(response, _)| response)
-                    .ok_or_else(|| anyhow::anyhow!("No votes"))
+                    .ok_or_else(|| LlmError::InvalidInput {
+                        reason: "No votes received".to_string(),
+                    })
             }
             VotingStrategy::Unanimous => {
                 if votes.len() == 1 {
                     Ok(votes.into_keys().next().unwrap())
                 } else {
-                    Err(anyhow::anyhow!("No consensus reached"))
+                    Err(LlmError::GenerationFailed {
+                        reason: "No consensus reached - agents gave different responses".to_string(),
+                    })
                 }
             }
             VotingStrategy::Weighted(_weights) => {
