@@ -15,6 +15,20 @@ export default function MissionScreen() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [isInitialized, setIsInitialized] = createSignal(false);
 
+  // Helper function to clean the mission briefing text
+  const cleanMissionBriefing = (text: string): string => {
+    // Remove any "Assistant:" prefix if present
+    let cleaned = text.replace(/^\s*Assistant:\s*/i, '');
+    
+    // Remove any "User:" sections if they somehow got included
+    if (cleaned.includes('User:')) {
+      cleaned = cleaned.split('User:')[0];
+    }
+    
+    // Trim whitespace
+    return cleaned.trim();
+  };
+
   // Typewriter effect for mission briefing
   createEffect(() => {
     const fullText = missionBriefing();
@@ -44,7 +58,7 @@ export default function MissionScreen() {
       
       // Generate initial mission briefing and options
       const initialState = await invoke<NarrativeState>("generate_initial_mission");
-      setMissionBriefing(initialState.mission_briefing);
+      setMissionBriefing(cleanMissionBriefing(initialState.mission_briefing));
       setCommandOptions(initialState.command_options);
     } catch (error) {
       console.error("Failed to initialize narrative system:", error);
@@ -84,7 +98,7 @@ export default function MissionScreen() {
         selectedOption: option
       });
       
-      setMissionBriefing(newState.mission_briefing);
+      setMissionBriefing(cleanMissionBriefing(newState.mission_briefing));
       setCommandOptions(newState.command_options);
     } catch (error) {
       console.error("Failed to process command option:", error);

@@ -323,6 +323,65 @@ impl Default for ModelConfig {
     }
 }
 
+/// Sampling configuration for text generation
+#[derive(Debug, Clone)]
+pub struct SamplingConfig {
+    /// Temperature for sampling (0.0 = greedy, 1.0 = uniform, >1.0 = more random)
+    pub temperature: f32,
+    
+    /// Top-K sampling: only sample from top K tokens (0 = disabled)
+    pub top_k: usize,
+    
+    /// Top-P (nucleus) sampling: sample from smallest set with cumulative prob >= top_p (0.0-1.0, 0.0 = disabled)
+    pub top_p: f32,
+    
+    /// Repetition penalty: penalize tokens that already appeared (1.0 = no penalty, >1.0 = penalize)
+    pub repetition_penalty: f32,
+}
+
+impl Default for SamplingConfig {
+    fn default() -> Self {
+        Self {
+            temperature: 0.85,      // Good balance
+            top_k: 50,              // Top 50 tokens
+            top_p: 0.9,             // 90% probability mass
+            repetition_penalty: 1.1, // Slight penalty for repetition
+        }
+    }
+}
+
+impl SamplingConfig {
+    /// Preset for creative/diverse generation
+    pub fn creative() -> Self {
+        Self {
+            temperature: 1.0,
+            top_k: 100,
+            top_p: 0.95,
+            repetition_penalty: 1.15,
+        }
+    }
+    
+    /// Preset for factual/focused generation
+    pub fn focused() -> Self {
+        Self {
+            temperature: 0.7,
+            top_k: 40,
+            top_p: 0.85,
+            repetition_penalty: 1.05,
+        }
+    }
+    
+    /// Preset for deterministic generation
+    pub fn greedy() -> Self {
+        Self {
+            temperature: 0.0,
+            top_k: 0,
+            top_p: 0.0,
+            repetition_penalty: 1.0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
