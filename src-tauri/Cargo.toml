@@ -40,6 +40,7 @@ tracing = "0.1"
 rand = "0.8"
 indexmap = "2"
 either = "1.15.0"
+async-openai = { version = "0.32.4", default-features = false, features = ["rustls", "chat-completion"] }
 
 [profile.dev]
 # Reduce codegen units to lower memory usage during compilation

@@ -52,25 +52,20 @@ export default function MissionScreen() {
     try {
       setIsLoading(true);
 
-      // First, load the AI model
-      console.log("Loading AI model...");
-      await invoke("load_model");
-      console.log("AI model loaded successfully");
-
-      // Then initialize the narrative system
-      console.log("Initializing narrative system...");
-      await invoke("initialize_narrative_system");
+      // Initialize the OpenRouter narrative system (no model loading needed)
+      console.log("Initializing OpenRouter narrative system...");
+      await invoke("initialize_openrouter_narrative");
       setIsInitialized(true);
-      console.log("Narrative system initialized");
+      console.log("OpenRouter narrative system initialized");
 
-      // Finally, generate initial mission briefing and options
-      console.log("Generating initial mission...");
-      const initialState = await invoke<NarrativeState>("generate_initial_mission");
+      // Generate initial mission briefing and options
+      console.log("Generating initial mission via OpenRouter...");
+      const initialState = await invoke<NarrativeState>("generate_openrouter_mission");
       setMissionBriefing(cleanMissionBriefing(initialState.mission_briefing));
       setCommandOptions(initialState.command_options);
       console.log("Initial mission generated successfully");
     } catch (error) {
-      console.error("Failed to initialize narrative system:", error);
+      console.error("Failed to initialize OpenRouter narrative system:", error);
       // Fallback to static content
       setMissionBriefing(
         "The deep space scanner has detected an anomalous energy signature emanating " +
@@ -102,8 +97,8 @@ export default function MissionScreen() {
     try {
       setIsLoading(true);
 
-      // Process the selected command option
-      const newState = await invoke<NarrativeState>("process_command_option", {
+      // Process the selected command option via OpenRouter
+      const newState = await invoke<NarrativeState>("process_openrouter_command_option", {
         selectedOption: option
       });
 

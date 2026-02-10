@@ -12,12 +12,14 @@ use uuid::Uuid;
 mod error;
 mod graph_db;
 mod graphs;
+mod openrouter_narrative;
 mod shared_types;
 mod workflows;
 
 use graph_db::GraphDB;
 use graphs::lore_graph::LoreGraph;
 use graphs::world_graph::WorldGraph;
+use openrouter_narrative::{NarrativeState as OpenRouterNarrativeState, OpenRouterNarrativeSystem};
 use workflows::agent_core::AgentModel;
 use workflows::narrative_system::{NarrativeState, NarrativeSystem};
 
@@ -27,6 +29,9 @@ struct AppState {
     lore_graph: Arc<Mutex<LoreGraph>>,
     narrative_system: Arc<TokioMutex<Option<NarrativeSystem>>>,
     current_briefing: Arc<Mutex<String>>,
+    // OpenRouter narrative system (temporary replacement for local model)
+    openrouter_system: Arc<TokioMutex<Option<OpenRouterNarrativeSystem>>>,
+    openrouter_briefing: Arc<Mutex<String>>,
 }
 
 #[tauri::command]
@@ -316,12 +321,18 @@ fn main() {
             let narrative_system = Arc::new(TokioMutex::new(None));
             let current_briefing = Arc::new(Mutex::new(String::new()));
 
+            // Initialize OpenRouter narrative system
+            let openrouter_system = Arc::new(TokioMutex::new(None));
+            let openrouter_briefing = Arc::new(Mutex::new(String::new()));
+
             // Create app state
             let app_state = AppState {
                 world_graph,
                 lore_graph,
                 narrative_system,
                 current_briefing,
+                openrouter_system,
+                openrouter_briefing,
             };
 
             // Manage state
@@ -337,8 +348,118 @@ fn main() {
             load_model,
             initialize_narrative_system,
             generate_initial_mission,
-            process_command_option
+            process_command_option,
+            // OpenRouter commands (temporary replacement)
+            initialize_openrouter_narrative,
+            generate_openrouter_mission,
+            process_openrouter_command_option
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ============================================================================
+// OPENROUTER COMMANDS (Temporary replacement for local model)
+// ============================================================================
+
+#[tauri::command]
+async fn initialize_openrouter_narrative(state: State<'_, AppState>) -> Result<String, String> {
+    println!("📡 Tauri Command: initialize_openrouter_narrative called");
+
+    // Create OpenRouter narrative system
+    let openrouter_sys = OpenRouterNarrativeSystem::new().map_err(|e| {
+        let err_msg = format!("Failed to initialize OpenRouter system: {}", e);
+        eprintln!("❌ {}", err_msg);
+        err_msg
+    })?;
+
+    // Store in app state
+    let mut openrouter_system = state.openrouter_system.lock().await;
+    *openrouter_system = Some(openrouter_sys);
+
+    println!("✅ OpenRouter narrative system initialized successfully!");
+    Ok("OpenRouter narrative system initialized successfully!".to_string())
+}
+
+#[tauri::command]
+async fn generate_openrouter_mission(
+    state: State<'_, AppState>,
+) -> Result<OpenRouterNarrativeState, String> {
+    println!("📡 Tauri Command: generate_openrouter_mission called");
+
+    // Get a reference to the OpenRouter narrative system
+    let mut guard = state.openrouter_system.lock().await;
+
+    let openrouter_system = guard.as_mut().ok_or_else(|| {
+        eprintln!("❌ OpenRouter narrative system not initialized");
+        "OpenRouter narrative system not initialized. Please initialize first.".to_string()
+    })?;
+
+    let narrative_state = openrouter_system
+        .generate_initial_mission()
+        .await
+        .map_err(|e| {
+            let err_msg = format!("Failed to generate initial mission: {}", e);
+            eprintln!("❌ {}", err_msg);
+            err_msg
+        })?;
+
+    // Drop the guard before locking openrouter_briefing
+    drop(guard);
+
+    // Store current briefing
+    let mut current_briefing = state
+        .openrouter_briefing
+        .lock()
+        .map_err(|_| "Failed to lock openrouter_briefing")?;
+    *current_briefing = narrative_state.mission_briefing.clone();
+
+    println!("✅ OpenRouter initial mission generated successfully");
+    Ok(narrative_state)
+}
+
+#[tauri::command]
+async fn process_openrouter_command_option(
+    state: State<'_, AppState>,
+    selected_option: String,
+) -> Result<OpenRouterNarrativeState, String> {
+    println!("📡 Tauri Command: process_openrouter_command_option called");
+    println!("   Selected option: '{}'", selected_option);
+
+    // Get current briefing first
+    let current_briefing = state
+        .openrouter_briefing
+        .lock()
+        .map_err(|_| "Failed to lock openrouter_briefing")?
+        .clone();
+
+    // Get a reference to the OpenRouter narrative system
+    let mut guard = state.openrouter_system.lock().await;
+
+    let openrouter_system = guard.as_mut().ok_or_else(|| {
+        eprintln!("❌ OpenRouter narrative system not initialized");
+        "OpenRouter narrative system not initialized. Please initialize first.".to_string()
+    })?;
+
+    let narrative_state = openrouter_system
+        .process_command_option(&selected_option, &current_briefing)
+        .await
+        .map_err(|e| {
+            let err_msg = format!("Failed to process command option: {}", e);
+            eprintln!("❌ {}", err_msg);
+            err_msg
+        })?;
+
+    // Drop the guard before locking openrouter_briefing
+    drop(guard);
+
+    // Update current briefing
+    let mut current_briefing = state
+        .openrouter_briefing
+        .lock()
+        .map_err(|_| "Failed to lock openrouter_briefing")?;
+    *current_briefing = narrative_state.mission_briefing.clone();
+
+    println!("✅ OpenRouter command option processed successfully");
+    Ok(narrative_state)
 }
