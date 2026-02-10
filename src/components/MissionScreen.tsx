@@ -19,12 +19,12 @@ export default function MissionScreen() {
   const cleanMissionBriefing = (text: string): string => {
     // Remove any "Assistant:" prefix if present
     let cleaned = text.replace(/^\s*Assistant:\s*/i, '');
-    
+
     // Remove any "User:" sections if they somehow got included
     if (cleaned.includes('User:')) {
       cleaned = cleaned.split('User:')[0];
     }
-    
+
     // Trim whitespace
     return cleaned.trim();
   };
@@ -51,15 +51,24 @@ export default function MissionScreen() {
   onMount(async () => {
     try {
       setIsLoading(true);
-      
-      // Initialize the narrative system (loads the AI model)
+
+      // First, load the AI model
+      console.log("Loading AI model...");
+      await invoke("load_model");
+      console.log("AI model loaded successfully");
+
+      // Then initialize the narrative system
+      console.log("Initializing narrative system...");
       await invoke("initialize_narrative_system");
       setIsInitialized(true);
-      
-      // Generate initial mission briefing and options
+      console.log("Narrative system initialized");
+
+      // Finally, generate initial mission briefing and options
+      console.log("Generating initial mission...");
       const initialState = await invoke<NarrativeState>("generate_initial_mission");
       setMissionBriefing(cleanMissionBriefing(initialState.mission_briefing));
       setCommandOptions(initialState.command_options);
+      console.log("Initial mission generated successfully");
     } catch (error) {
       console.error("Failed to initialize narrative system:", error);
       // Fallback to static content
@@ -89,15 +98,15 @@ export default function MissionScreen() {
   // Handle command option selection
   const handleCommandOption = async (option: string) => {
     if (isLoading() || !isInitialized()) return;
-    
+
     try {
       setIsLoading(true);
-      
+
       // Process the selected command option
       const newState = await invoke<NarrativeState>("process_command_option", {
         selectedOption: option
       });
-      
+
       setMissionBriefing(cleanMissionBriefing(newState.mission_briefing));
       setCommandOptions(newState.command_options);
     } catch (error) {
@@ -283,7 +292,7 @@ export default function MissionScreen() {
           <div class="command-options">
             <For each={commandOptions()}>
               {(option) => (
-                <button 
+                <button
                   class="command-option-btn"
                   onClick={() => handleCommandOption(option)}
                   disabled={isLoading()}

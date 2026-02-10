@@ -32,11 +32,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-        "onnxruntime.dll",
-        "onnxruntime_providers_shared.dll",
-        "models/gemma-270M/model.onnx",
-        "models/gemma-270M/model.onnx_data"
-      ]
+    "resources": []
   }
 }

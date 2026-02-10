@@ -19,10 +19,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "saint-framework-launcher-open"
 path = "src/main.rs"
 
-[[bin]]
-name = "inspect_model"
-path = "src/bin/inspect_model.rs"
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -33,13 +29,29 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 thiserror = "1.0"
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git" }
 tokio = { version = "1", features = ["sync", "macros", "rt-multi-thread"] }
+tokio-stream = "0.1"
+futures = "0.3"
 once_cell = "1.18"
-ort = { version = "2.0.0-rc.10", features = ["load-dynamic"] }
-tokenizers = "0.22.1"
-ndarray = "0.15.6"
-anyhow = "1.0.100"
+anyhow = "1.0"
 parking_lot = "0.12"
 tracing = "0.1"
-half = "2.4"
 rand = "0.8"
+indexmap = "2"
+either = "1.15.0"
+
+[profile.dev]
+# Reduce codegen units to lower memory usage during compilation
+codegen-units = 4
+# Disable incremental to reduce memory pressure
+incremental = false
+# Don't optimize, but limit memory
+opt-level = 0
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 2
+panic = "abort"
+strip = true

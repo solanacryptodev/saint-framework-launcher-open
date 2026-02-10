@@ -1,6 +1,6 @@
+use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Result;
 
 // Import shared types
 use crate::shared_types::{Blackboard, BlackboardSlotStatus};
@@ -19,11 +19,7 @@ pub struct AgentPair {
 }
 
 impl AgentPair {
-    pub fn new(
-        slot_number: usize,
-        writer: WriterAgent,
-        reader: ReaderAgent,
-    ) -> Self {
+    pub fn new(slot_number: usize, writer: WriterAgent, reader: ReaderAgent) -> Self {
         Self {
             slot_number,
             writer,
@@ -52,31 +48,36 @@ impl WriterAgent {
     }
 
     /// Writer attempts to generate and write data
-    pub async fn try_write(
-        &mut self,
-        blackboard: &Blackboard,
-        context: &str,
-    ) -> Result<bool> {
+    pub async fn try_write(&mut self, blackboard: &Blackboard, context: &str) -> Result<bool> {
         // Check if slot is ready for writing
         let status = blackboard.get_slot_status(self.slot_number)?;
-        
+
         if !status.ready_to_read {
-            println!("✍️  [Slot {}] {} generating data...", self.slot_number, self.name);
-            
+            println!(
+                "✍️  [Slot {}] {} generating data...",
+                self.slot_number, self.name
+            );
+
             // Generate data using agent
             let prompt = format!(
                 "Context: {}\nGenerate information for slot {}:",
                 context, self.slot_number
             );
             let data = self.agent.run(&prompt).await?;
-            
+
             // Write to blackboard
             blackboard.write_to_slot(self.slot_number, data.clone())?;
-            println!("✅ [Slot {}] {} wrote data (flag → true)", self.slot_number, self.name);
-            
+            println!(
+                "✅ [Slot {}] {} wrote data (flag → true)",
+                self.slot_number, self.name
+            );
+
             Ok(true)
         } else {
-            println!("⏸️  [Slot {}] {} waiting (reader hasn't consumed yet)", self.slot_number, self.name);
+            println!(
+                "⏸️  [Slot {}] {} waiting (reader hasn't consumed yet)",
+                self.slot_number, self.name
+            );
             Ok(false)
         }
     }
@@ -105,20 +106,29 @@ impl ReaderAgent {
     pub async fn try_read(&mut self, blackboard: &Blackboard) -> Result<Option<String>> {
         // Attempt to read from blackboard
         if let Some(data) = blackboard.read_from_slot(self.slot_number)? {
-            println!("📖 [Slot {}] {} read data (flag → false)", self.slot_number, self.name);
-            
+            println!(
+                "📖 [Slot {}] {} read data (flag → false)",
+                self.slot_number, self.name
+            );
+
             // Process the data using agent
             let prompt = format!(
                 "Process this data from slot {}:\n{}",
                 self.slot_number, data
             );
             let result = self.agent.run(&prompt).await?;
-            
-            println!("✅ [Slot {}] {} processed data", self.slot_number, self.name);
-            
+
+            println!(
+                "✅ [Slot {}] {} processed data",
+                self.slot_number, self.name
+            );
+
             Ok(Some(result))
         } else {
-            println!("⏸️  [Slot {}] {} waiting (no data ready)", self.slot_number, self.name);
+            println!(
+                "⏸️  [Slot {}] {} waiting (no data ready)",
+                self.slot_number, self.name
+            );
             Ok(None)
         }
     }
@@ -152,13 +162,11 @@ impl NumberedBlackboardWorkflow {
     ) -> Result<()> {
         // Create slot on blackboard
         self.blackboard.create_slot(slot_number)?;
-        
+
         // Register agent pair
-        self.agent_pairs.insert(
-            slot_number,
-            AgentPair::new(slot_number, writer, reader),
-        );
-        
+        self.agent_pairs
+            .insert(slot_number, AgentPair::new(slot_number, writer, reader));
+
         println!("📋 Registered slot {}", slot_number);
         Ok(())
     }
@@ -178,7 +186,11 @@ impl NumberedBlackboardWorkflow {
 
             // Phase 1: All writers try to write
             for (_slot_number, pair) in &mut self.agent_pairs {
-                if pair.writer.try_write(&self.blackboard, initial_context).await? {
+                if pair
+                    .writer
+                    .try_write(&self.blackboard, initial_context)
+                    .await?
+                {
                     any_activity = true;
                 }
             }
@@ -259,194 +271,193 @@ impl WorkflowResults {
 #[cfg(test)]
 mod examples {
     use super::*;
-    use super::super::agent_core::OrtModel;
     use std::sync::Arc;
 
-    #[tokio::test]
-    async fn example_game_systems() -> Result<()> {
-        // Mock model (replace with real OrtModel)
-        let model = Arc::new(create_mock_model()?);
+    // #[tokio::test]
+    // async fn example_game_systems() -> Result<()> {
+    //     // Mock model (replace with real OrtModel)
+    //     let model = Arc::new(create_mock_model()?);
 
-        let mut workflow = NumberedBlackboardWorkflow::new(5);
+    //     let mut workflow = NumberedBlackboardWorkflow::new(5);
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLOT 0: World State Manager
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let writer_0 = WriterAgent::new(
-            "WorldStateGenerator",
-            Agent::new(
-                "WorldStateGen",
-                "Generate current world state: locations, NPCs, items",
-                model.clone(),
-            ),
-            0,
-        );
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // SLOT 0: World State Manager
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let writer_0 = WriterAgent::new(
+    //         "WorldStateGenerator",
+    //         Agent::new(
+    //             "WorldStateGen",
+    //             "Generate current world state: locations, NPCs, items",
+    //             model.clone(),
+    //         ),
+    //         0,
+    //     );
 
-        let reader_0 = ReaderAgent::new(
-            "WorldStateConsumer",
-            Agent::new(
-                "WorldStateProcessor",
-                "Process world state and update game database",
-                model.clone(),
-            ),
-            0,
-        );
+    //     let reader_0 = ReaderAgent::new(
+    //         "WorldStateConsumer",
+    //         Agent::new(
+    //             "WorldStateProcessor",
+    //             "Process world state and update game database",
+    //             model.clone(),
+    //         ),
+    //         0,
+    //     );
 
-        workflow.register_pair(0, writer_0, reader_0)?;
+    //     workflow.register_pair(0, writer_0, reader_0)?;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLOT 1: NPC Behavior System
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let writer_1 = WriterAgent::new(
-            "NPCBehaviorGenerator",
-            Agent::new(
-                "NPCBehaviorGen",
-                "Generate NPC intentions and actions based on world state",
-                model.clone(),
-            ),
-            1,
-        );
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // SLOT 1: NPC Behavior System
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let writer_1 = WriterAgent::new(
+    //         "NPCBehaviorGenerator",
+    //         Agent::new(
+    //             "NPCBehaviorGen",
+    //             "Generate NPC intentions and actions based on world state",
+    //             model.clone(),
+    //         ),
+    //         1,
+    //     );
 
-        let reader_1 = ReaderAgent::new(
-            "NPCBehaviorExecutor",
-            Agent::new(
-                "NPCBehaviorExec",
-                "Execute NPC behaviors and update their states",
-                model.clone(),
-            ),
-            1,
-        );
+    //     let reader_1 = ReaderAgent::new(
+    //         "NPCBehaviorExecutor",
+    //         Agent::new(
+    //             "NPCBehaviorExec",
+    //             "Execute NPC behaviors and update their states",
+    //             model.clone(),
+    //         ),
+    //         1,
+    //     );
 
-        workflow.register_pair(1, writer_1, reader_1)?;
+    //     workflow.register_pair(1, writer_1, reader_1)?;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLOT 2: Event System
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let writer_2 = WriterAgent::new(
-            "EventGenerator",
-            Agent::new(
-                "EventGen",
-                "Generate dynamic events: xenon spikes, system failures, echoes",
-                model.clone(),
-            ),
-            2,
-        );
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // SLOT 2: Event System
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let writer_2 = WriterAgent::new(
+    //         "EventGenerator",
+    //         Agent::new(
+    //             "EventGen",
+    //             "Generate dynamic events: xenon spikes, system failures, echoes",
+    //             model.clone(),
+    //         ),
+    //         2,
+    //     );
 
-        let reader_2 = ReaderAgent::new(
-            "EventHandler",
-            Agent::new(
-                "EventHandler",
-                "Handle events and trigger consequences",
-                model.clone(),
-            ),
-            2,
-        );
+    //     let reader_2 = ReaderAgent::new(
+    //         "EventHandler",
+    //         Agent::new(
+    //             "EventHandler",
+    //             "Handle events and trigger consequences",
+    //             model.clone(),
+    //         ),
+    //         2,
+    //     );
 
-        workflow.register_pair(2, writer_2, reader_2)?;
+    //     workflow.register_pair(2, writer_2, reader_2)?;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLOT 3: Narrative Generator
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let writer_3 = WriterAgent::new(
-            "NarrativeWriter",
-            Agent::new(
-                "NarrativeGen",
-                "Generate atmospheric narrative descriptions",
-                model.clone(),
-            ),
-            3,
-        );
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // SLOT 3: Narrative Generator
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let writer_3 = WriterAgent::new(
+    //         "NarrativeWriter",
+    //         Agent::new(
+    //             "NarrativeGen",
+    //             "Generate atmospheric narrative descriptions",
+    //             model.clone(),
+    //         ),
+    //         3,
+    //     );
 
-        let reader_3 = ReaderAgent::new(
-            "NarrativePresenter",
-            Agent::new(
-                "NarrativePresenter",
-                "Format and present narrative to player",
-                model.clone(),
-            ),
-            3,
-        );
+    //     let reader_3 = ReaderAgent::new(
+    //         "NarrativePresenter",
+    //         Agent::new(
+    //             "NarrativePresenter",
+    //             "Format and present narrative to player",
+    //             model.clone(),
+    //         ),
+    //         3,
+    //     );
 
-        workflow.register_pair(3, writer_3, reader_3)?;
+    //     workflow.register_pair(3, writer_3, reader_3)?;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // SLOT 4: Puzzle State Manager
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let writer_4 = WriterAgent::new(
-            "PuzzleStateGenerator",
-            Agent::new(
-                "PuzzleGen",
-                "Generate puzzle states and hints",
-                model.clone(),
-            ),
-            4,
-        );
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // SLOT 4: Puzzle State Manager
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let writer_4 = WriterAgent::new(
+    //         "PuzzleStateGenerator",
+    //         Agent::new(
+    //             "PuzzleGen",
+    //             "Generate puzzle states and hints",
+    //             model.clone(),
+    //         ),
+    //         4,
+    //     );
 
-        let reader_4 = ReaderAgent::new(
-            "PuzzleStateEvaluator",
-            Agent::new(
-                "PuzzleEval",
-                "Evaluate puzzle solutions and update progress",
-                model.clone(),
-            ),
-            4,
-        );
+    //     let reader_4 = ReaderAgent::new(
+    //         "PuzzleStateEvaluator",
+    //         Agent::new(
+    //             "PuzzleEval",
+    //             "Evaluate puzzle solutions and update progress",
+    //             model.clone(),
+    //         ),
+    //         4,
+    //     );
 
-        workflow.register_pair(4, writer_4, reader_4)?;
+    //     workflow.register_pair(4, writer_4, reader_4)?;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // Run the workflow
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let results = workflow.run("Player enters Laboratory Alpha").await?;
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     // Run the workflow
+    //     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //     let results = workflow.run("Player enters Laboratory Alpha").await?;
 
-        println!("📊 Final Results:");
-        for (slot, slot_results) in results.all_results() {
-            println!("\nSlot {}: {} results", slot, slot_results.len());
-            for result in slot_results {
-                println!("  - {}", result);
-            }
-        }
+    //     println!("📊 Final Results:");
+    //     for (slot, slot_results) in results.all_results() {
+    //         println!("\nSlot {}: {} results", slot, slot_results.len());
+    //         for result in slot_results {
+    //             println!("  - {}", result);
+    //         }
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    #[tokio::test]
-    async fn example_step_by_step_execution() -> Result<()> {
-        let model = Arc::new(create_mock_model()?);
-        let mut workflow = NumberedBlackboardWorkflow::new(10);
+    // #[tokio::test]
+    // async fn example_step_by_step_execution() -> Result<()> {
+    //     let model = Arc::new(create_mock_model()?);
+    //     let mut workflow = NumberedBlackboardWorkflow::new(10);
 
-        // Register one simple pair
-        workflow.register_pair(
-            0,
-            WriterAgent::new(
-                "DataProducer",
-                Agent::new("Producer", "Produce data", model.clone()),
-                0,
-            ),
-            ReaderAgent::new(
-                "DataConsumer",
-                Agent::new("Consumer", "Consume data", model.clone()),
-                0,
-            ),
-        )?;
+    //     // Register one simple pair
+    //     workflow.register_pair(
+    //         0,
+    //         WriterAgent::new(
+    //             "DataProducer",
+    //             Agent::new("Producer", "Produce data", model.clone()),
+    //             0,
+    //         ),
+    //         ReaderAgent::new(
+    //             "DataConsumer",
+    //             Agent::new("Consumer", "Consume data", model.clone()),
+    //             0,
+    //         ),
+    //     )?;
 
-        // Run step by step
-        for i in 0..3 {
-            println!("\n━━━ Manual Step {} ━━━", i + 1);
-            workflow.run_single_cycle("Step context").await?;
-            
-            // Check state
-            let state = workflow.get_state();
-            println!("State: {:?}", state);
-        }
+    //     // Run step by step
+    //     for i in 0..3 {
+    //         println!("\n━━━ Manual Step {} ━━━", i + 1);
+    //         workflow.run_single_cycle("Step context").await?;
 
-        Ok(())
-    }
+    //         // Check state
+    //         let state = workflow.get_state();
+    //         println!("State: {:?}", state);
+    //     }
 
-    fn create_mock_model() -> Result<OrtModel> {
-        // Mock implementation
-        unimplemented!("Replace with real OrtModel")
-    }
+    //     Ok(())
+    // }
+
+    // fn create_mock_model() -> Result<OrtModel> {
+    //     // Mock implementation
+    //     unimplemented!("Replace with real OrtModel")
+    // }
 }
 
 // ============================================================================
